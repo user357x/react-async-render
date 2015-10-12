@@ -1,0 +1,38 @@
+{
+  "name": "react-async-render",
+  "version": "0.0.1",
+  "description": "Using Redux to resolve asynchronous rendering issue on server side with React (0.14)",
+  "main": "index.js",
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StubHubLabs/react-async-render.git"
+  },
+  "keywords": [
+    "Isomorphic",
+    "React",
+    "Async",
+    "Server-rendering"
+  ],
+  "author": "Kevin Guo <kevin.guoqing@gmail.com>",
+  "license": "SEE LICENSE IN LICENSE",
+  "bugs": {
+    "url": "https://github.com/StubHubLabs/react-async-render/issues"
+  },
+  "homepage": "https://github.com/StubHubLabs/react-async-render#readme",
+  "engines": {
+    "node": "4.0"
+  },
+  "dependencies": {
+    "kew": "^0.7.0",
+    "react": "^0.14.0",
+    "react-dom": "^0.14.0",
+    "react-redux": "^3.1.0",
+    "redux": "^3.0.2",
+    "redux-thunk": "^1.0.0"
+  },
+  "devDependencies": {
+    "gulp": "^3.9.0",
+    "gulp-babel": "^5.2.1"
+  }
+}
