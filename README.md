@@ -1,32 +1,119 @@
-Server side rendering using react-async-render
+react-async-render
 ====
+Using Redux to resolve React asynchronous rendering issue on server side.
 
-## 1. Background
-Simply from the [synchronous API](https://facebook.github.io/react/docs/top-level-api.html#reactdomserver) provided by React, we know the server side rendering could not be done well if your React application needs to load data asychronously.
+~~~~
+npm install react-async-render --save
+~~~~
 
-There are a few React server side rendering samples on github. But some of them are too simple to be considered as a solution for a complex SPA, which may involve multiple external requests to finish a page rendering.
+## 1. What's the problem with React server side rendering?
+Simply from the synchronous nature of [ReactDOMServer API](https://facebook.github.io/react/docs/top-level-api.html#reactdomserver) definition, we know the server side rendering could not be done well if your React application needs to load data asychronously. That means if you render React application on server side, you are only able to get HTML layout and static contents.
 
-In theory, to make an asychronous server side rendering with React, we need to meet at-least two requirements:
-  - Req #1. collect/register every asychronous requests that defined in every React Component's `constructor` and/or `componentWillMount` methods that are invoked before the very first-time `render`.
-  - Req #2. able to get the DOM string when all these registered requests are fulfilled.
 
-There is already a solution for isomophic rendering - [react-isomorphic-starterkit](https://github.com/RickWong/react-isomorphic-starterkit), which uses [react-transmit](https://www.npmjs.com/package/react-transmit). I didn't try it, but from my first glance, I think it has to create one container for every React Component so that it can use its own way to control the rendering tree of all components in an application. It's brilliant idea that it should work well with old version of React.
+## 2. How does react-async-render resolve this problem?
+In theory, to achieve asychronous server side rendering with React, it needs to:
+  - register every asychronous request that is defined in every React Component's `constructor` and/or `componentWillMount` methods that are invoked before the very first-time `render` happens.
+  - get the DOM string when all these registered requests are fulfilled.
 
-## 2. Using Redux for React (v0.14) server side rendering
-This solution is by leveraging [Redux](https://www.npmjs.com/package/react-redux) store. The initial value of Redux store can be applied to React components before their first-time `render` happens, by mapping store state value to components' `props` attribute. So as long as the inital value of Redux store could be set dynamically, the React application's DOM string (Req #2) could be got by using [`ReactDOMServer.renderToString`](https://facebook.github.io/react/docs/top-level-api.html#reactdomserver.rendertostring) method.
+To fill these requriments, `react-async-render` provides
+  - a mixin method - `asyncInit` - to allow React Components to register asynchronous actions for initialization.
+  - a method - `renderToString` - to render any React Component and return a promise of DOM string.
 
-The easiest way to dynamically set the initial value of Redux store, is just to render the React application, and set state to Redux store after every external requests fulfilled. As the Redux store is a singleton, it can be re-used in another rendering cycle of the application after it's initial state is fully set up.
+With leveraging [Redux](https://www.npmjs.com/package/react-redux) store, `react-async-render` resolves this problem by rendering the React Component twice.
+  - During the first-time render, Components use `asyncInit` method to register asynchronous actions, and submit initial data when the actions are done. The initial data of Components will be stored in the Redux store, and the Redux store will be re-used in the second-time render.
+  - When all asynchorous actions are done, all the initial data are set in Redux store, the second-time render occurs. The initial data in Redux store could be assigned to Components' `props` attribute, so those Components could use the `props` data to render.
 
-With this thought, a mixin method is introduced to meet the Req #1 - `asyncInit`. It's used to register asynchronous actions that need to perform to prepare data for the component's rendering.
+**Note: `react-async-render` depends on React v0.14**
 
-### Usage
-Below is an example how to use it in a Component.
+## 3. How to use react-async-render?
 
-~~~~javascript~~~~
+### 3.1 On React Application side
+Include the react-async-render in React Component which needs load data asynchronously
+~~~~js
+var AsyncRender = require('react-async-render');
+~~~~
+Merge the mixin to Component, and set up context for the mixin method
+~~~~js
+var reactMixin = require('react-mixin');
+//... require other libraries
+class MyComponent extends React.Component{
+  constructor(props, context){
+    super(props, context);
+    //... other codes
+  }
+  // ... other methods
+}
+
+MyComponent.contextTypes = {
+  ...AsyncRender.contextTypes
+};
+
+reactMixin(MyComponent.prototype, AsyncRender.mixin);
+~~~~
+
+Then register asynchronous actions in Component's `consturctor` method, or `componentWillMount` method
+
+~~~~js
+constructor(props, context){
+  super(props, context);
+  // ... other codes
+  this.state = {
+    myData: this.props.data
+  };
+  this.asyncInit(
+    function(done){
+      asyncAction(function(err, response){
+        var initialData = {myData: response};
+        // use callback `done` method to submit initial data.
+        // this.setState(initialData) will be invoked after submitting
+        done(err, initialData);
+      });
+    },
+    'MyCompInitKey', //any string identifier, serves as key in Redux store
+    false // set it to true to avoid setState method. In most cases, use default false value
+  );
+}
+~~~~
+
+Assign initial data from Redux store to Component's `props`.
+~~~~js
+var {connect} = require('react-redux');
+
+// ... MyComponent class
+
+function mapStateToProps(state){
+  //`initialize` is the reserved namespace in Redux store for `react-async-render`
+  var initStore = state.initialize || {};
+  return {
+    data: initStore.MyCompInitKey && initStore.MyCompInitKey.myData
+  };
+}
+
+module.exports = connect(mapStateToProps)(MyComponent);
+~~~~
+### 3.2 On Node.js server side
+Using `renderToString` method to render any React Component
+~~~~jsx
+var AsyncRender = require('react-async-render');
+var app = (
+  <MyApp>
+    <MyComponent />
+    <MyOtherComponent />
+  </MyApp>
+);
+AsyncRender.renderToString(app).then(function(html){
+  //send html to client
+});
+~~~~
+### 3.3 Example
+Below are complete code examples about how to use `react-async-render` in React Components and Express.js server. It will build an `AuthorPage` Component, which has `AuthorDetail` (No code provided. It has similar code structure to `ArticleList`) and Author's `ArticleList`.
+
+**ArticleList.react.js** (read the comments)
+~~~~jsx
     // ArticleList.react.js
     var React = require('react');
-    var Isomophic = require('react-async-render'); // require this module
-    var requestMixin = require('../mixin/request'); // provide this.fetch mixin method
+    var AsyncRender = require('react-async-render'); // require this module
+    var request = require('request');
     var ArticleItem = require('./ArticleItem.react');
     var reactMixin = require('react-mixin');
     var {connect} = require('react-redux');
@@ -35,20 +122,24 @@ Below is an example how to use it in a Component.
       constructor(props, context){ //context argument is REQUIRED
         super(props, context);
         this.state = {
-          //get data from this.props.data which initialied from Redux store
-          data: this.props.data
+          //this.props.initData will be set from its parent Component
+          data: this.props.initData
         };
         if(this.props.url){
-          this.asyncInit(function(done){
-              // fetch the articles async
-              this.fetch(this.props.url, function(err, resp){
-                var initialData = {data:resp.results}
-                //passing the second argument as initial data in Redux store
+          this.asyncInit(
+            function(done){
+              // fetch the articles asyncly
+              request({
+                method: 'GET',
+                uri: this.props.url,
+                json: true,
+              }, function(err, response, body){
+                var initialData = {data: body};
+                //set the second argument as initial data in Redux store
                 done(err, initialData);
-              }.bind(this));
-            }.bind(this),
-            this.props.initKey, // REQUIRED. Used for initial data in Redux store
-            true // set to true means that it will invoke this.setState with the initialData
+              });
+            },
+            this.props.initKey // REQUIRED. Used for initial data in Redux store
           );
         }
       }
@@ -57,11 +148,11 @@ Below is an example how to use it in a Component.
         var data = this.state.data || [];
         var items = data.map(function(item){
           return (
-            <li className="articleItem" key={item.nid}><ArticleItem {...item} /></li>
+            <li className="articleItem" key={item.nid}><ArticleItem data={item} /></li>
           );
         });
         return (
-          <div className={classes}>
+          <div>
             <ul>
               {items}
             </ul>
@@ -70,17 +161,17 @@ Below is an example how to use it in a Component.
       }
     }
 
-    reactMixin(ArticleList.prototype, requestMixin); //mixin this.request method
-    reactMixin(ArticleList.prototype, Isomophic.mixin); //REQUIRED. mixin this.asyncInit method
+    reactMixin(ArticleList.prototype, AsyncRender.mixin); //REQUIRED. mixin this.asyncInit method
 
     ArticleList.contextTypes = {
-      ...Isomophic.contextTypes //contextTypes is REQUIRED
+      ...AsyncRender.contextTypes //contextTypes is REQUIRED
     };
     module.exports = ArticleList;
 ~~~~
 
 Load init data from Redux store, and set to `data` props of `ArticleList`.
-~~~~javascript~~~~
+**AuthorPage.react.js** (read the comments)
+~~~~jsx
     // AuthorPage.react.js
     var React = require('react');
     var AuthorDetail = require('./AuthorDetail.react'); //Just another React Component
@@ -99,11 +190,11 @@ Load init data from Redux store, and set to `data` props of `ArticleList`.
             <AuthorDetail
               authorId={this.props.params.authorId}
               initKey={"Author"} //REQUIRED
-              data={this.props.authorData} />
+              initData={this.props.authorData} />
             <ArticleList
               url={authorArticlesUrl}
               initKey={"AuthorArticles"} //REQUIRED
-              data={this.props.articleListData}/>
+              initData={this.props.articleListData}/>
           </div>
         );
       }
@@ -120,16 +211,18 @@ Load init data from Redux store, and set to `data` props of `ArticleList`.
     module.exports = connect(mapStateToProps)(AuthorPage);
 ~~~~
 
-In express app.js file, below snippet might be needed to make it work:
-
-~~~~javascript~~~~
+Setting up Express server in **app.js** (read the comments)
+~~~~jsx
+  // ... var express = require('express');
+  // ... var app = express();
+  // ... other code set up express server
   var {RoutingContext, match} = require('react-router');
   var routes = require('../shared/routes'); //React-router route config js
   var appReducer = require('../shared/reducers'); //if app uses Redux as well
-  var Isomophic = require('react-async-render');
+  var AsyncRender = require('react-async-render');
   var {createLocation} = require('history');
 
-  //Common usage with React-router for server side rendering
+  //Typical usage with react-router for server side rendering
   app.use('/', function(req, res){
     var location = createLocation(req.url);
     match({ routes, location }, (error, redirectLocation, renderProps) => {
@@ -149,10 +242,9 @@ In express app.js file, below snippet might be needed to make it work:
   });
 
   function render(renderProps, res){
-    //replace below with other App component if it's not using react-router
-    var app = ( <RoutingContext {...renderProps} /> );
+    var app = ( <RoutingContext {...renderProps} /> ); //Can be any React Component
 
-    Isomophic.renderToString(app, appReducer)
+    AsyncRender.renderToString(app, appReducer)
       .then(function(html){
         return res.render('react_index.dust', {html: html});
       }, function(err){
@@ -161,15 +253,11 @@ In express app.js file, below snippet might be needed to make it work:
   }
 ~~~~
 
-## 3. Pros and Cons of this solution
+## 4. Known issue
 
-### Pros
-- Minor changes to existing React application, especially when it uses Redux as well.
-- On demand server side rendering. Able to choose which components need to render on server side.
+When use `react-async-render` to generate the HTML page on server side, the browser will flicker once after loading the HTML page. The reason is that React found the HTML generated server side is different than expected, so it re-renders.
 
-### Cons
-- Honestly, it invokes `ReactDOMServer.renderToString` twice to get the HTML snippet. And it relies on latest React (v0.14).
-- Page will flicker once in browser after page load. The reason is that React found the HTML is different than expected, so it re-renders. Error codes shown on Developer console like below:
+Error codes shown on Developer console like below:
 
   ~~~~
   Warning: React attempted to reuse markup in a container but the checksum was invalid.
@@ -178,8 +266,10 @@ In express app.js file, below snippet might be needed to make it work:
   ~~~~
 
 
-Due to the 2nd Cons I mentioned above, the flicker is definitely not a good user experience. But it doesn't matter if the contents are just served to search engine. If you just starts/plans your React application with server side rendering, I would suggest starting with [react-isomorphic-starterkit](https://github.com/RickWong/react-isomorphic-starterkit). If you want to add server side rendering capablitity to your existing React app, just to serve search engine or social share, please try this.
+The flickering page is definitely not a good user experience. But if you use server rendering just for serving search engines, `react-async-render` could work well for that purpose.
 
-  ~~~~
-  npm install react-async-render --save
-  ~~~~
+
+#### Another solution?
+See [react-isomorphic-starterkit](https://github.com/RickWong/react-isomorphic-starterkit), which uses [react-transmit](https://www.npmjs.com/package/react-transmit).
+
+Seemingly this solution has to create one container for every React Component so that it can use its own way to control the rendering.
