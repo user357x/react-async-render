@@ -27,8 +27,10 @@ exports.render = function(appComponent, appReducer){
 
   var html = renderToString(app);
   if(allPromises){
-    return allPromises().then(function(){
-      html = renderToString(app);
+    return allPromises().then(function(results){
+      if(results && results.length){
+        html = renderToString(app);
+      }
       return {
         store: _store,
         html
@@ -49,3 +51,5 @@ exports.renderToString = function(appComponent, appReducer){
 
 exports.contextTypes = contextTypes;
 exports.mixin = require('./mixin');
+exports.Provider = Provider;
+exports.store = store;
