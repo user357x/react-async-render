@@ -6,7 +6,7 @@
 
 var Q = require('kew');
 
-exports.asyncInit = function(func, initKey, setState){
+exports.asyncInit = function(func, initKey, avoidSetState){
   var deferred = Q.defer();
   initKey = initKey || randomKey();
   if(this.context && this.context.asyncQ){
@@ -21,7 +21,7 @@ exports.asyncInit = function(func, initKey, setState){
         key: initKey,
         data
       });
-      if(setState){
+      if(!avoidSetState){
         try{
           this.setState(data);
         }catch(e){}
