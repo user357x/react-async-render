@@ -1,27 +1,27 @@
-react-async-render
+React Async Render on server side using react-async-render
 ====
-Using Redux to resolve React asynchronous rendering issue on server side.
+Resolve React async rendering issue on server side, using Redux store.
 
 ~~~~
 npm install react-async-render --save
 ~~~~
 
 ## 1. What's the problem with React server side rendering?
-Simply from the synchronous nature of [ReactDOMServer API](https://facebook.github.io/react/docs/top-level-api.html#reactdomserver) definition, we know the server side rendering could not be done well if your React application needs to load data asychronously. That means if you render React application on server side, you are only able to get HTML layout and static contents.
+Simply from the synchronous nature of [ReactDOMServer API](https://facebook.github.io/react/docs/top-level-api.html#reactdomserver) definition, we know the server side rendering could not be done well if your React application needs to load data asynchronously. That means if you render React application on server side, you are only able to get HTML layout and static contents.
 
 
 ## 2. How does react-async-render resolve this problem?
-In theory, to achieve asychronous server side rendering with React, it needs to:
-  - register every asychronous request that is defined in every React Component's `constructor` and/or `componentWillMount` methods that are invoked before the very first-time `render` happens.
+In theory, to achieve async server side rendering with React, it needs to:
+  - register every async request that is defined in every React Component's `constructor` and/or `componentWillMount` methods that are invoked before the very first-time `render` happens.
   - get the DOM string when all these registered requests are fulfilled.
 
 To fill these requriments, `react-async-render` provides
-  - a mixin method - `asyncInit` - to allow React Components to register asynchronous actions for initialization.
+  - a mixin method - `asyncInit` - to allow React Components to register async actions for initialization.
   - a method - `renderToString` - to render any React Component and return a promise of DOM string.
 
 With leveraging [Redux](https://www.npmjs.com/package/react-redux) store, `react-async-render` resolves this problem by rendering the React Component twice.
-  - During the first-time render, Components use `asyncInit` method to register asynchronous actions, and submit initial data when the actions are done. The initial data of Components will be stored in the Redux store, and the Redux store will be re-used in the second-time render.
-  - When all asynchorous actions are done, all the initial data are set in Redux store, the second-time render occurs. The initial data in Redux store could be assigned to Components' `props` attribute, so those Components could use the `props` data to render.
+  - During the first-time render, Components use `asyncInit` method to register async actions, and submit initial data when the actions are done. The initial data of Components will be stored in the Redux store, and the Redux store will be re-used in the second-time render.
+  - When all async actions are done, all the initial data are set in Redux store, the second-time render occurs. The initial data in Redux store could be assigned to Components' `props` attribute, so those Components could use the `props` data to render.
 
 **Note: `react-async-render` depends on React v0.14**
 
@@ -51,7 +51,7 @@ MyComponent.contextTypes = {
 reactMixin(MyComponent.prototype, AsyncRender.mixin);
 ~~~~
 
-Then register asynchronous actions in Component's `consturctor` method, or `componentWillMount` method
+Then register async actions in Component's `consturctor` method, or `componentWillMount` method
 
 ~~~~js
 constructor(props, context){
@@ -211,7 +211,7 @@ Load init data from Redux store, and set to `data` props of `ArticleList`.
     module.exports = connect(mapStateToProps)(AuthorPage);
 ~~~~
 
-Setting up Express server in **app.js** (read the comments)
+Setting up Express server in **server.js** (read the comments)
 ~~~~jsx
   // ... var express = require('express');
   // ... var app = express();
@@ -253,7 +253,7 @@ Setting up Express server in **app.js** (read the comments)
   }
 ~~~~
 
-## 4. Known issue
+## 4. ~~Known issue~~
 
 When use `react-async-render` to generate the HTML page on server side, the browser will flicker once after loading the HTML page. The reason is that React found the HTML generated server side is different than expected, so it re-renders.
 
@@ -266,8 +266,42 @@ Error codes shown on Developer console like below:
   ~~~~
 
 
-The flickering page is definitely not a good user experience. But if you use server rendering just for serving search engines, `react-async-render` could work well for that purpose.
+In 0.0.2, this issue could be fixed with minor changes on both server and client side.
 
+**On the server side**
+~~~~jsx
+var AsyncRender = require('react-async-render');
+var appReducer = require('../shared/reducers'); //if app uses Redux as well
+var {RoutingContext, match} = require('react-router');
+
+//... other codes
+function renderAsync(req, res, renderProps){
+  var app = (
+    <RoutingContext {...renderProps} />
+  );
+  AsyncRender.render(app, appReducer).then(function({html, script}){
+    return res.render('react_index.dust', {html, script});
+  });
+}
+~~~~
+
+**On the client side**
+~~~~jsx
+var ReactDOM = require('react-dom');
+var {Router} = require('react-router');
+var routes = require('./routes');
+var appReducer = require('../shared/reducers');
+var {AsyncProvider, createStore} = require('react-async-render');
+
+//window.__INITIAL_STATE__ is injected into HTML when it serves to client
+var store = createStore(appReducer, window.__INITIAL_STATE__);
+ReactDOM.render((
+  <AsyncProvider store={store}>
+    <Router routes={routes} />
+  </AsyncProvider>
+), document.getElementById('contents'));
+
+~~~~
 
 #### Another solution?
 See [react-isomorphic-starterkit](https://github.com/RickWong/react-isomorphic-starterkit), which uses [react-transmit](https://www.npmjs.com/package/react-transmit).
