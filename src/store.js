@@ -10,13 +10,13 @@ var thunk = require('redux-thunk');
 var createStoreWithMiddleware = applyMiddleware(thunk)(createStore);
 var reducer = require('./reducer');
 
-module.exports = function(reducers){
+module.exports = function(reducers, initData){
   reducers = reducers || {};
   var _reducers = {
     ...reducers,
     initialize: reducer
   }
-  var store = createStoreWithMiddleware(combineReducers(_reducers));
+  var store = createStoreWithMiddleware(combineReducers(_reducers), initData);
   return store;
 };
 
